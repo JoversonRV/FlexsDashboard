@@ -1,0 +1,544 @@
+---
+title: "Causas de la migración en Pueblos Indígenas del Perú 2017"
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: fill
+    social: 
+    navbar:
+        - { icon: "fa-sharp fa-solid fa-hand-holding-heart fa-sm", href: "https://bdpi.cultura.gob.pe/pueblos-indigenas", align: right }
+        - { icon: "fa-solid fa-circle-info", href: "https://www.gob.pe/15251-quienes-son-los-pueblos-indigenas", align: right}
+        - { icon: "fa-solid fa-heart", href: "https://www.inei.gob.pe/media/MenuRecursivo/publicaciones_digitales/Est/Lib1598/TOMO_01.pdf", align: right}
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(rio)
+library(ggplot2)
+library(stringr)
+library(dplyr)
+library(tidyverse)
+library(modelsummary)
+library(kableExtra)
+library(cluster)
+library(highcharter)
+library(gt)
+library(viridis)
+data=import("Base BDPI.xlsx")
+```
+
+```{r, include=FALSE}
+data = data[-c(2,16,40,50),]
+```
+
+```{r, include=FALSE}
+colnames(data) = c("PUEBLO","LOCALIDADES CENSADAS","POBLACIÓN TOTAL","NUMERO LOCALIDADES","ESTABLECIMIENTOS EIB","LENGUA","SITUACIÓN LENGUA","CONFLICTOS TIERRA","ESTABLECIMIENTOS SALUD","MIGRACIÓN","AFILIACIÓN JUNTOS")
+```
+
+```{r, include=FALSE}
+data$`ESTABLECIMIENTOS EIB` <- ifelse(!is.na(data$`ESTABLECIMIENTOS EIB`),
+                                    str_extract_all(data$`ESTABLECIMIENTOS EIB`, "(\\d+\\.*\\d*)(?=\\%)"),NA)
+```
+
+```{r, include=FALSE}
+data$`CONFLICTOS TIERRA` <- ifelse(!is.na(data$`CONFLICTOS TIERRA`),
+                                    str_extract_all(data$`CONFLICTOS TIERRA`, "(\\d+\\.*\\d*)(?=\\%)"),NA)
+```
+
+```{r,include=FALSE}
+data$`ESTABLECIMIENTOS SALUD` <- ifelse(!is.na(data$`ESTABLECIMIENTOS SALUD`),
+                                    str_extract_all(data$`ESTABLECIMIENTOS SALUD`, "(\\d+\\.*\\d*)(?=\\%)"),NA)
+
+```
+
+```{r, include=FALSE}
+data$MIGRACIÓN <- ifelse(!is.na(data$MIGRACIÓN),
+                                    str_extract_all(data$MIGRACIÓN, "(\\d+\\.*\\d*)(?=\\%)"),NA)
+```
+
+```{r, include=FALSE}
+data$`POBLACIÓN TOTAL`=as.numeric(data$`POBLACIÓN TOTAL`)
+```
+
+```{r, include=FALSE}
+data$`CONFLICTOS TIERRA` <- as.numeric(data$`CONFLICTOS TIERRA`)
+```
+
+```{r}
+data$MIGRACIÓN = as.numeric(data$MIGRACIÓN)
+```
+
+```{r, include=FALSE}
+tabla1 <- data %>%
+  count(Situación = `SITUACIÓN LENGUA`, name = "Frecuencia") %>%
+  filter(!is.na(Situación)) %>%
+  mutate(Porcentaje = Frecuencia / sum(Frecuencia) * 100)
+tabla1
+```
+
+```{r, include=FALSE}
+tabla2 = data |> 
+  group_by(`SITUACIÓN LENGUA`) |>
+  summarize(Media = mean(MIGRACIÓN, na.rm = T), 
+            Desv.Std = sd(MIGRACIÓN, na.rm = T),
+            Mediana = median(MIGRACIÓN, na.rm = T))
+tabla2
+```
+
+```{r, include=FALSE}
+tabla2 <- tabla2[!is.na(tabla2$Media), ]
+```
+
+```{r, include=FALSE}
+data$MIGRATOT <- ifelse(data$MIGRACIÓN > 0.50, "MIGRO", "NO MIGRO")
+```
+
+```{r, include=FALSE}
+data$`ESTABLECIMIENTOS EIB` =as.numeric(data$`ESTABLECIMIENTOS EIB`)
+```
+
+```{r, include=FALSE}
+data$NOACCESOIBE <- ifelse(!is.na(data$`ESTABLECIMIENTOS EIB`), 1-data$`ESTABLECIMIENTOS EIB`, NA)
+```
+
+```{r, include=FALSE}
+data$`ESTABLECIMIENTOS SALUD`=as.numeric(data$`ESTABLECIMIENTOS SALUD`)
+```
+
+```{r, include=FALSE}
+data$`ESTABLECIMIENTOS SALUD` <- as.numeric(data$`ESTABLECIMIENTOS SALUD`) / 100
+```
+
+```{r, include=FALSE}
+data$NOACCESOSALUD <- ifelse(!is.na(data$`ESTABLECIMIENTOS SALUD`), 1-data$`ESTABLECIMIENTOS SALUD`, NA)
+```
+
+```{r, include=FALSE}
+dataClus <- data[, c(5,8,9,10,11)]
+row.names(dataClus) <- data$PUEBLO
+
+dataClus <- na.omit(dataClus)
+```
+
+```{r, include=FALSE}
+library(factoextra)
+g.dist = daisy(dataClus, metric="gower")
+set.seed(123)
+res.diana <- hcut(g.dist, k = 4,hc_func='diana')
+```
+
+```{r, include=FALSE}
+dontselect=c("PUEBLO", "LOCALIDADES CENSADAS","POBLACIÓN TOTAL","NUMERO LOCALIDADES",
+               "LENGUA","SITUACIÓN LENGUA")
+select=setdiff(names(data),dontselect) 
+theData=data[,select]
+```
+
+```{r}
+library(polycor)
+corMatrix=polycor::hetcor(theData)$correlations
+```
+
+Inicio {data-icon="fa-signal"}
+===================================== 
+
+Column {data-width=450}
+-----------------------------------------------------------------------
+
+### Población por cada Pueblo Indígena
+
+```{r}
+custom_colors <- viridis::viridis(n = 20)
+
+data %>% 
+  arrange(desc(`POBLACIÓN TOTAL`)) %>% 
+  head(20) %>% 
+  hchart('bar', hcaes(x = PUEBLO, y =`POBLACIÓN TOTAL` , color = custom_colors)) %>% 
+  hc_add_theme(hc_theme_google()) %>% 
+  hc_tooltip(pointFormat = '<b>Población Total: </b> {point.y} <br>') %>% 
+  hc_title(text = 'Población total por cada pueblo indígena',
+           style = list(fontSize = '25px', fontWeight = 'bold')) %>% 
+  hc_subtitle(text = 'Fuente: III Censo de Comunidades Nativas (2017)',
+              style = list(fontSize = '16px')) %>% 
+  hc_credits(enabled = TRUE, text = 'Joverson, Sergio, Gunter')
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Media de Migración 
+
+```{r}
+gauge(65.6, min = 0, max = 100, symbol = '%', gaugeSectors(
+  success = c(80, 100), warning = c(40, 79), danger = c(0, 39)
+))
+```
+En promedio el porcentaje de migración en las localidades encuestadas es del 66%, con valores que oscilan entre el 19% y el 100%.         
+
+### Introducción
+
+AUTORES: Joverson Reyna (20203726), Sergio Torres (20206587), Gunter Leonel (20203783)
+
+En el trabajo de investigación se trató de analizar algunos mecanismos que explican la migración en los pueblos indígenas del Perú con variables poco convencionales y no estudiadas cómo conflictos por tierra presentes o el grado de acceso a programas sociales como "Juntos". Acá se presentan los resultados obtenidos. 
+
+LIMITACIONES Y CONSIDERACIONES PREELIMINARES:
+
+•	La investigación presupone que los indígenas han migrado por factores socioeconómicos como salud y educación. Sin embargo, también podrían haber migrado y vuelto a su lugar de origen (Migración Estacionaria).
+
+•	Existen varios pueblos que poseen gran representación y no fueron tomados en cuenta por no ser representativos en el censo, como los quechua y aimara.
+
+•	No se toma en cuenta la desconfianza histórica de varios grupos indígenas hacia el Estado, lo que podría haber generado respuestas que no van de acuerdo a la realidad.
+
+Variables {data-icon="fa-table"}
+=====================================   
+
+Column {data-width=350} {.tabset}
+-----------------------------------------------------------------------
+### Acceso a Programas Sociales
+```{r}
+ggplot(data, aes(x = `AFILIACIÓN JUNTOS`)) +
+  geom_histogram(binwidth = 0.1, fill = "#69b3a2", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = 0.76, color = "red", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = 0.77, color = "green", linetype = "dashed", size = 1) +
+  labs(x = "% Afiliación de localidades a Programas Sociales (Juntos)", y = "Frecuencia") +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+MÍNIMO: 0.35
+MEDIA:0.76
+MEDIANA: 0.77
+MÁXIMO: 1.00
+
+### Conflictos por Tierras
+```{r}
+ggplot(data, aes(x = `CONFLICTOS TIERRA`)) +
+  geom_histogram(binwidth = 0.1, fill = "#69b3a2", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = 0.45, color = "red", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = 0.47, color = "green", linetype = "dashed", size = 1) +
+  labs(x = "% Localidades que poseen conflictos por tierras", y = "Frecuencia") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+MÍNIMO: 0
+MEDIA:0.44
+MEDIANA: 0.47
+MÁXIMO: 1.00
+
+### Situación de Lengua
+```{r}
+ggplot(tabla1, aes(x = Situación, y = Porcentaje)) +
+  geom_col(width = 0.5, fill = c("#3498db", "#2980b9", "#1f618d", "#154360"),color="black") +
+  geom_text(aes(label = paste0(Porcentaje, "%")), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, size = 3) +
+  labs(x = "Situación", y = "Porcentaje", title = "Porcentaje de localidades por situación de Lengua") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+Column {data-width=350} {.tabset}
+-----------------------------------------------------------------------
+
+### Migración
+```{r}
+ggplot(data, aes(x = MIGRACIÓN)) +
+  geom_histogram(binwidth = 0.1, fill = "#69b3a2", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = 0.65, color = "red",linetype = "dashed", size = 1) +
+  geom_vline(xintercept = 0.68, color = "green",linetype = "dashed", size = 1) +
+  labs(x = "% de Migración en Localidades Encuestadas", y = "Frecuencia") +
+  theme_classic()
+```
+
+MÍNIMO: 0
+MEDIA:0.44
+MEDIANA: 0.47
+MÁXIMO: 1.00
+
+### No acceso a Establecimientos IBE
+```{r}
+ggplot(data, aes(x = NOACCESOIBE)) +
+  geom_histogram(binwidth = 0.1, fill = "#69b3a2", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = 0.24, color = "red", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = 0.21, color = "green", linetype = "dashed", size = 1) +
+  labs(x = "% Localidades sin acceso a Establecimientos de Educación Interbilingue", y = "Frecuencia") +
+  theme_classic()
+```
+
+MÍNIMO: 0
+MEDIA:0.24
+MEDIANA: 0.19
+MÁXIMO: 0.82
+
+### No acceso a Establecimientos de Salud
+```{r}
+ggplot(data, aes(x = NOACCESOSALUD)) +
+  geom_histogram(binwidth = 0.05, fill = "#69b3a2", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = 0.83, color = "red", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = 0.81, color = "green", linetype = "dashed", size = 1) +
+  labs(x = "% Localidades sin acceso a Establecimientos de Salud", y = "Frecuencia") +
+  theme_classic()
+```
+
+MÍNIMO: 0.63
+MEDIA:0.83
+MEDIANA: 0.81
+MÁXIMO: 1.00
+
+Cruzamiento {data-icon="fa-calendar"}
+=====================================   
+Análisis Bivariado, para analizar si existía correlación entre las variables escogidas y la variable dependiente (Migración) se aplicó las pruebas correspondientes como ANOVA o de Spearman. 
+
+Column {data-width=650} {.tabset}
+-----------------------------------------------------------------------
+### Relación entre Migración y Conflictos por Tierra
+```{r}
+ggplot(data, aes(x=`CONFLICTOS TIERRA`, y=MIGRACIÓN))+
+  geom_point()+
+  geom_smooth(method=lm, se=F)+ 
+  geom_text(data=data, aes(label=PUEBLO), cex=2.5, nudge_y = 0.05, check_overlap = T)+
+  labs(x="Porcentaj de localidades con conflictos por Tierras", 
+       y="Porcentaje de Migración")+ 
+  theme_light()
+```
+
+### Relación entre Migración y  Afiliación a Programas Sociales
+```{r}
+ggplot(data, aes(x=`AFILIACIÓN JUNTOS`, y=MIGRACIÓN))+
+  geom_point()+
+  geom_smooth(method=lm, se=F)+ 
+  geom_text(data=data, aes(label=PUEBLO), cex=2.5, nudge_y = 0.05, check_overlap = T)+
+  labs(x="Porcentaje de Localidades que acceden a Programas Sociales(Juntos)", 
+       y="Porcentaje de Migración")+ 
+  theme_light()
+```
+
+### Relación entre Migración y Situación de Lengua 
+```{r}
+ggplot(tabla2, aes(x=`SITUACIÓN LENGUA`, y=Media)) + 
+  geom_bar(stat = "identity") +
+  ggtitle("Porcentaje promedio de migración por situación de Lengua") +
+  xlab("Situación de Lengua") +
+  geom_text(aes(label=round(Media,1)), vjust=1.30, color="white", size=3)+
+  theme_minimal()
+```
+
+### Relación entre Migración y Falta de Acceso a Establecimientos de Salud
+```{r}
+ggplot(data, aes(x=NOACCESOSALUD, y=MIGRACIÓN))+
+  geom_point()+
+  geom_smooth(method=lm, se=F)+ 
+  geom_text(data=data, aes(label=PUEBLO), cex=2.5, nudge_y = 0.05, check_overlap = T)+
+  labs(x="Porcentaje de Localidades sin acceso a Establecimientos de Salud", 
+       y="Porcentaje de Migración")+ 
+  theme_light()
+```
+
+### Relación entre Migración y falta de acceso a establecimientos de Educación Bilingue
+```{r}
+ggplot(data, aes(x=NOACCESOIBE, y=MIGRACIÓN))+
+  geom_point()+
+  geom_smooth(method=lm, se=F)+ 
+  geom_text(data=data, aes(label=PUEBLO), cex=2.5, nudge_y = 0.05, check_overlap = T)+
+  labs(x="Porcentaje de Localidades sin acceso a Establecimientos de Educación", 
+       y="Porcentaje de Migración")+ 
+  theme_light()
+```
+
+Modelos {data-icon="fa-file"}
+=====================================   
+
+Column {data-width=350} {.tabset}
+-----------------------------------------------------------------------
+### MODELO 1
+Primera hipótesis: La migración es causada por la falta de acceso a establecimientos de salud, acceso a educación y por conflicto de tierras.
+```{r}
+modelo1=formula(MIGRACIÓN~NOACCESOIBE+NOACCESOSALUD+`CONFLICTOS TIERRA`)
+reg1=lm(modelo1,data=data)
+
+model1=list('Apropiacion (I)'=reg1)
+modelsummary(model1, title = "Regresion: modelo 1",
+             stars = TRUE,
+             output = "kableExtra")
+```
+
+### MODELO 2
+Segunda hipótesis:La migración de los pueblos nativos se da por la falta de acceso a establecimientos de salud, falta de acceso a educación intercultural bilingue, por conflictos de tierras y por el porcentaje de acceso a Programas Sociales (Juntos):
+```{r}
+modelo2=formula(MIGRACIÓN~NOACCESOSALUD+NOACCESOIBE+`CONFLICTOS TIERRA`+`AFILIACIÓN JUNTOS`)
+reg2=lm(modelo2,data=data)
+
+model2=list('Apropiacion (II)'=reg2)
+modelsummary(model2, title = "Regresion: modelo 2",
+             stars = TRUE,
+             output = "kableExtra")
+```
+
+### MODELO 3
+Tercera hipótesis: La migración de los pueblos nativos se da por la falta de acceso a establecimientos de salud, falta de acceso a educación intercultural bilingue, por conflictos de tierras, por el porcentaje de acceso a Programas Sociales y por la situación de la lengua materna: 
+```{r}
+modelo3=formula(MIGRACIÓN~NOACCESOSALUD+NOACCESOIBE+`CONFLICTOS TIERRA`+`AFILIACIÓN JUNTOS`+`SITUACIÓN LENGUA`)
+reg3=lm(modelo3,data=data)
+
+model3=list('Apropiacion (III)'=reg3)
+modelsummary(model3, title = "Regresion: modelo 3",
+             stars = TRUE,
+             output = "kableExtra")
+```
+
+### COMPARACIÓN
+```{r}
+models=list('apropiacion (I)'=reg1,
+            'apropiacion (II)'=reg2,
+            'apropiacion (III)'=reg3)
+modelsummary(models, title = "Resultados de todos los modelos",
+             stars = TRUE,
+             output = "kableExtra")
+```
+
+
+Column {data-width=450}
+-----------------------------------------------------------------------
+### Comparación de modelos (ANOVA): 
+```{r}
+library(magrittr)
+library(knitr)
+tanova=anova(reg1,reg2,reg3)
+
+kable(tanova,
+      caption = "Tabla ANOVA para comparar modelos")%>%kableExtra::kable_styling(full_width = FALSE)
+```
+
+### ANÁLISIS: 
+Al usar la prueba ANOVA para la comparación de modelos, se demostró que el tercer modelo resultó ser el mejor, debido a que la comparación es significativa y se rechaza la igualdad de modelos gracias a la reducción de errores vista en el Pr (>F). El modelo 2 reflejó menos error que el modelo 1, pero el 3 reflejó menos error que ambos, por lo que es el que debe ser elegido. Esto se observa también en el gráfico, en donde la variable ‘Conflictos Tierra’ demostró ser significativa en los modelos 1, 2 y 3. En el caso de las demás variables en otros modelos, se observa como no son significativas, pues todas presentan un cruce con el eje cero. Es decir, en algún momento su efecto será nulo respecto a la variable dependiente.
+
+
+Conglomerados {data-icon="fa-file"}
+=====================================
+Column {data-width=450}
+-----------------------------------------------------------------------
+### Dendograma en base a estragia de partición (DIANA)
+```{r}
+fviz_dend(res.diana, cex = 0.7, horiz = T, main = "") 
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+### Silhouette en base a estrategia de partición (DIANA)
+```{r}
+fviz_silhouette(res.diana,print.summary = F)
+```
+
+### Análisis y Comentarios
+-Al realizar el proceso de clusterización y análisis por conglomerados se observó que el algoritmo ha identificado una estructura de cluster clara en los datos y una sola agrupación es suficiente para describir esa estructura. No obstante, se decidió trabajar con el método DIANA para fines académicos y observar de mejor manera el proceso de agrupamiento en comparación de AGNES que resultó ser el peor. 
+
+-El dendograma indica el costo de conglomerar a partir de la barra Height. La barra demuestra que no pareciera haber mucha similitud entre los distintos pueblos indígenas debido a la alta longitud de la barra, por lo que la conglomeración no resulta ser muy rápida. Al hacer el gráfico silhouette, se demuestra que el segundo grupo y el cuarto son los mejores por la carencia de pueblos por debajo de la barra negativa, lo que indica pueblos indígenas que están mal clusterizados. Es importante mencionar que en todos los métodos, los elementos del tercer grupo son los que mejor tienden a agruparse.  
+
+Análisis Factorial{data-icon="fa-file"}
+=====================================
+Column {data-width=450} 
+-----------------------------------------------------------------------
+### Correlación entre variables para posible índice:
+```{r}
+library(ggcorrplot)
+ggcorrplot(corMatrix)
+```
+
+### Índices y Overall MSA:
+```{r}
+library(psych)
+psych::KMO(corMatrix) 
+```
+
+Column {data-width=350} 
+-----------------------------------------------------------------------
+### Resultados Prueba
+¿Es matriz de identidad?
+```{r}
+cortest.bartlett(corMatrix,n=nrow(theData))$p.value>0.05
+```
+¿Es una matriz singular?
+```{r}
+library(matrixcalc)
+is.singular.matrix(corMatrix)
+```
+
+La prueba señala que es una matriz singular, por lo que no tiene sentido continuar con el análisis
+
+### Análisis:
+-Retiramos las variables que no sean indicadores, aunque prácticamente no tengamos ninguna que sea un indicador en general, pues trabajamos con variables que indican porcentajes, pese a ello, se realizan las pruebas para fines del ejercicio del EFA.
+
+-Las correlaciones entre variables son muy bajas y negativas fuertes.
+
+-Pese a ello, el KMO nos indica que las variables podrían ser útiles para la creación de un índice
+
+-La prueba señala que es una matriz singular, por lo que no tiene sentido continuar con el análisis.
+
+-El análisis a la luz del fenómeno migratorio de población nativa nos brinda información relevante que debería ser tomada en cuenta para futuros trabajos en materia migratoria de pueblos indígenas. La mayor limitante es que no existe algún índice migratorio de pueblos indígenas, por lo que no se encontraron indicadores. Vale la pena prestarle atención a los conflictos por tierras y profundizar sobre la naturaleza de los mismos, ya que tienen más afinidad con el porcentaje de migración. Respecto a los otros índices creados, hay que revisarlos con cuidado ya que aunque las cargas factoriales sean altas solo pueden solo ser incoherencias respecto a la selección de variables. Por ejemplo, el no acceso a servicios educativos se clasificó con 
+
+Conclusiones {data-icon="fa-table"}
+=====================================
+Column {data-width=350} 
+-----------------------------------------------------------------------
+### ANÁLISIS REGRESIONAL
+```{r}
+library(ggplot2)
+library(sjPlot)
+
+
+plot_models(reg1,reg2,reg3,vline.color = "black",m.labels=c("Modelo 1","Modelo 2","Modelo 3"),dot.size = 1,line.size = 0.6)
+```
+
+
+Column {data-width=350} 
+-----------------------------------------------------------------------
+### ANÁLISIS DESCRIPTIVO
+```{r}
+custom_colors2 <- viridis::mako(n = 2)
+
+data %>% 
+  group_by(MIGRATOT) %>% 
+  summarise(count = n()) %>% 
+  filter(!is.na(MIGRATOT)) %>%
+  hchart('pie', hcaes(x = MIGRATOT, y = count, color = custom_colors2)) %>% 
+  hc_add_theme(hc_theme_google()) %>% 
+  hc_tooltip(pointFormat='<b>Proporción: </b> {point.percentage:,.2f}%') %>% 
+  hc_title(text = 'Migración superior al 50% en localidades encuestadas',
+           style = list(fontSize = '15px', fontWeight = 'bold')) %>% 
+  hc_credits(enabled = TRUE, text = 'Jover')
+```
+
+###                               BIBLIOGRAFÍA: 
+Schmelkes, Sylvia. (2013). Educación para un México intercultural. Sinéctica, (40), 01-12. Recuperado en 01 de diciembre de 2023, de http://www.scielo.org.mx/scielo.php?script=sci_arttext&pid=S1665-109X2013000100002&lng=es&tlng=es.
+
+Día Internacional de los Pueblos Indígenas: Migración y desplazamiento de los pueblos Indígenas | Chirapaq Español. (s. f.). http://chirapaq.org.pe/es/migracion-desplazamiento-pueblos-indigenas
+
+Correa, M & Roopnaraine, T. (2014, 1 marzo). Pueblos Indígenas y Programas de Transferencias Condicionadas (PTC): Estudio etnográfico sobre la implementación y los efectos socioculturales del programa Juntos en seis comunidades andinas y amazónicas de Perú. https://publications.iadb.org/es/pueblos-indigenas-y-programas-de-transferencias-condicionadas-ptc-estudio-etnografico-sobre-la-0
+
+Vigil Oliveros, Nila, & Sotomayor Candia, Ernestina. (2022). Dificultades y avances de la EIB en la zona andina del Cusco en cuanto al reconocimiento de los derechos lingüísticos de sus hablantes2. Boletín de la Academia Peruana de la Lengua, (72), 439-466. Epub 16 de diciembre de 2022. https://dx.doi.org/10.46744/bapl.202202.013
+
+Lopez David Francisco, Ruvalcaba-Ledezma Jesús Carlos, Toledo-Hernández Erubiel, Rodríguez-Barrera Miguel Ángel, Forero-Forero Angela Victoria, Orbe-Díaz Diana Iveth et al . Percepción de riesgos en la salud de la comunidad indígena Mixteca El Calvario, al sur de México. JONNPR  [Internet]. 2021  [citado  2023  Dic  01] ;  6( 11 ): 1341-1355. Disponible en: http://scielo.isciii.es/scielo.php?script=sci_arttext&pid=S2529-850X2021001100003&lng=es.  Epub 11-Ene-2023.  https://dx.doi.org/10.19230/jonnpr.4367.
+
+Oelz, M & Balvedi, G. (2014, 1 marzo). Los pueblos indígenas en un mundo del trabajo en transformación: análisis de los derechos económicos y sociales de los pueblos indígenas a través del Navegador Indígena. En International Labour Organization.. https://publications.iadb.org/es/pueblos-indigenas-y-programas-de-transferencias-condicionadas-ptc-estudio-etnografico-sobre-la-0
+
+Organización Internacional para las Migraciones de las Naciones Unidas (2014). Pueblos Indígenas y Migración en América del Sur El trabajo de la OIM y principales lineamientos para retroalimentar la estrategia regional. Informe técnico. https://www.un.org/esa/socdev/unpfii/documents/2016/UN-Agencies-Docs/OIM-Spanish-version316.pdf
+
+
+Column {data-width=350} 
+-----------------------------------------------------------------------
+### CONCLUSIONES FINALES: 
+
+-Para comenzar al realizar el análisis descriptivo se llega a la conclusión de que el porcentaje de migración es relativamente alto en las localidades de cada pueblo indígena, pues en más del 74% de las mismas el porcentaje de migración es superior al 50%. Asimismo, si bien a simple vista durante el cruzamiento y el análisis bivariado exitían indicios de correlación entre las variables, al aplicar las pruebas correspondientes (ANOVA y test de correlación de Spearman) solo la relación Migración-Conflicto Tierras parece sostenerse. No obstante, si se observa una tendencia a la significancia en la mayoría de variables cruzadas, por lo que una recolección más sólida de datos y detallada podría esclarecer mejor este punto. 
+
+-De los tres modelos escogidos, solo la variable "Conflicto tierras" tuvo un efecto notable y significativo en cada uno de ellos, mientras que todas las demás variables escogidas carecen de peso estadístico. Es importante mencionar también que con todo el número de variables escogidas aún no se logra explicar ni el 50% de la variabilidad de nuestra variable de análisis (Migración), por lo que los modelos realizados aún son débiles. Esto podría deberse a problemas durante el recojo de datos, pues la disponibilidad de información detallada es insuficiente, considerando que un gran número de la información sobre pueblos índigenas cómo las encuestas analizadas en el presente trabajo se agrupa en torno a departamentos y no por el pueblo en sí.
+
+-Por último, se concluye que al aplicar una análisis factorial y de conglomerados a las variables escogidas se encuentra que no existe evidencia estadísticamente significativa para la creación de un índice. De la misma manera, al tratar de organizar los pueblos en subconjuntos para ver si guardan relación entre sí se encuentra que no existe una clara similitud entre los distintos casos, incluso aplicando las distintas técnicas (Partición, Jerarquía), pues se sugiere que un cluster será suficiente. Futuros trabajos deben enfocarse en suplir las limitaciones encontradas en el presente análisis estadístico, en especial en recojo de datos y en la selección de variables que vayan de mayor acorde a la literatura o las teorías del momento respecto a causas de migración en pueblos indígenas. 
+
+
+    ¡GRACIAS POR SU ATENCIÓN!
